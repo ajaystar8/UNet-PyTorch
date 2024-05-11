@@ -1,0 +1,140 @@
+import random
+from typing import *
+from PIL import Image
+import matplotlib.pyplot as plt
+
+import torch
+from torch import nn
+from torchsummary import summary
+from torch.utils.data import DataLoader
+import torchvision.transforms.v2 as transforms
+
+from config import *
+
+
+def walk_data_directory(data_directory: str):
+    for root, dirs, files in os.walk(data_directory):
+        print(f"In {root}, {len(dirs)} directories and {len(files)} images/masks found.")
+
+
+def visualize_random_images(
+        image_paths: list,
+        mask_paths: list,
+        n: int = 4):
+    random.seed(42)
+    random_samples_idx = random.sample(range(len(image_paths)), k=n)
+    for i, idx in enumerate(random_samples_idx):
+        image, mask = Image.open(image_paths[idx]), Image.open(mask_paths[idx]).convert('L')
+        fig, axs = plt.subplots(1, 2)
+
+        axs[0].imshow(image)
+        axs[0].set_title(f"Image\nShape:{image.size}\nMode: {image.mode}")
+        axs[0].axis("off")
+
+        axs[1].imshow(mask, cmap="gray")
+        axs[1].set_title(f"Mask\nShape:{mask.size}\nMode: {mask.mode}")
+        axs[1].axis("off")
+
+
+def visualize_image_from_dataloader(dataloader: DataLoader):
+    img, mask = next(iter(dataloader))
+
+    fig, axs = plt.subplots(1, 2)
+
+    img_mod = img.squeeze().permute(1, 2, 0)
+    mask_mod = mask.squeeze()
+
+    axs[0].imshow(img_mod)
+    axs[0].set_title(f"Image\nSize: {img_mod.size()}")
+    axs[0].axis(False)
+
+    axs[1].imshow(mask_mod, cmap="gray")
+    axs[1].set_title(f"Mask\nSize: {mask_mod.size()}")
+    axs[1].axis(False)
+
+
+def get_model_summary(model: nn.Module):
+    return summary(model=model.to(DEVICE), input_size=(IN_CHANNELS, IMG_HEIGHT, IMG_WIDTH))
+
+
+def plot_loss_curves(results: Dict[str, List[float]]):
+    train_loss = results["train_loss"]
+    test_loss = results["test_loss"]
+
+    train_accuracy = results["train_accuracy"]
+    test_accuracy = results["test_accuracy"]
+
+    epochs = range(len(train_loss))
+
+    plt.figure(figsize=(15, 7))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, train_loss, label="train_loss")
+    plt.plot(epochs, test_loss, label="test_loss")
+    plt.title("Loss")
+    plt.xlabel("Epochs")
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, train_accuracy, label="train_accuracy")
+    plt.plot(epochs, test_accuracy, label="test_accuracy")
+    plt.title("Accuracy")
+    plt.xlabel("Epochs")
+    plt.legend()
+
+
+def make_predictions(model: nn.Module,
+                     image_path: str,
+                     mask_path: str,
+                     transform: transforms.Compose):
+
+    img = Image.open(image_path).convert("L")
+    mask = Image.open(mask_path).convert("L")
+
+    img, mask = transform(img, mask)
+    img, mask = img.unsqueeze(dim=0), mask.unsqueeze(dim=0)
+
+    model = model.to(DEVICE)
+
+    model.eval()
+    with torch.inference_mode():
+        img, mask = img.to(DEVICE), mask.to(DEVICE)
+
+        pred_logit = model(img)
+        pred_mask = (torch.sigmoid(pred_logit) > 0.5).float()
+
+    fig, axs = plt.subplots(1, 3)
+
+    image_mod = img.squeeze().detach().cpu().numpy()
+    mask_mod = mask.squeeze().detach().cpu().numpy()
+    pred_mask_mod = pred_mask.squeeze().detach().cpu().numpy()
+
+    axs[0].imshow(image_mod, cmap="gray")
+    axs[0].set_title("Image")
+    axs[0].axis(False)
+
+    axs[1].imshow(mask_mod, cmap="gray")
+    axs[1].set_title("True Mask")
+    axs[1].axis(False)
+
+    axs[2].imshow(pred_mask_mod, cmap="gray")
+    axs[2].set_title("Predicted Mask")
+    axs[2].axis(False)
+
+    plt.show()
+
+
+def save_model(
+        model: nn.Module,
+        target_dir: str,
+        model_name: str
+):
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir)
+
+    assert model_name.split(".")[-1] == "pt" or model_name.split(".")[-1] == "pth", \
+        "model_name must end with .pt or .pth"
+
+    model_ckpt_path = os.path.join(target_dir, model_name)
+    print(f"[INFO] Saving model to: {model_ckpt_path}")
+    torch.save(model.state_dict(), model_ckpt_path)
