@@ -19,7 +19,7 @@ https://github.com/drkostas/COSC525-Project1/blob/master/LICENSE)
 
 ## About <a name="about"></a>
 
-A personal project to learn about semantic segmentation.
+A personal project to learn about semantic segmentation using PyTorch.
 
 Implementation of the UNet architecture as described in [Ronneberger et al.](https://arxiv.org/abs/1505.04597) for task of semantic segmentation of on X-Ray images of the Humerus bone.
 
