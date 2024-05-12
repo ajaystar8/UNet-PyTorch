@@ -1,9 +1,21 @@
+"""
+Contains PyTorch model code to instantiate a UNet model.
+"""
 import torch
 import torch.nn as nn
 from torch.nn.functional import relu
 
 
 class UNet(nn.Module):
+    """
+    Create the UNet architecture.
+
+    Replicates the UNet architecture from "https://arxiv.org/abs/1505.04597" in PyTorch.
+
+    Args:
+        in_channels: Number of channels in the input image
+        out_channels: Number of channels expected in the output mask
+    """
 
     def __init__(self, in_channels, out_channels):
         super().__init__()
