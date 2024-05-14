@@ -21,19 +21,19 @@ https://github.com/drkostas/COSC525-Project1/blob/master/LICENSE)
 
 A personal project to learn about semantic segmentation using PyTorch.
 
-Implementation of the UNet architecture as described in [Ronneberger et al.](https://arxiv.org/abs/1505.04597) for task of semantic segmentation of on X-Ray images of the Humerus bone.
+Implementation of the UNet architecture as described in [Ronneberger et al.](https://arxiv.org/abs/1505.04597) for task of semantic segmentation of the Humerus Bone using X-Ray images as the input modality. 
 
-Reproduction of results using a subset of the [MURA](https://stanfordmlgroup.github.io/competitions/mura/) dataset.
+Reproduction of results is carried out using a subset of the [MURA](https://stanfordmlgroup.github.io/competitions/mura/) dataset.
 
 The main code is located in the [train.py](train.py) file. All other code files are imported into [train.py](train.py) for training and testing the model.
 
-To code to perform segmentation on custom images is present in [predict.py](predict.py) file. 
+The code to perform segmentation on custom images is present in [predict.py](predict.py) file. 
 
 ### Dataset <a name="dataset"></a> 
 
 The images obtained from [MURA](https://stanfordmlgroup.github.io/competitions/mura/) had the X-Ray images included, without the ground truth segmentation masks. 
 
-Hence, ground truth annotations were created using the [LabelMe](https://github.com/labelmeai/labelme.git) software. The created masks were validated by medical professionals. 
+Hence, ground truth annotations were created using the [LabelMe](https://github.com/labelmeai/labelme.git) software. The created masks were later validated by medical professionals. 
 
 ## Getting Started <a name="getting_started"></a>
 
@@ -61,7 +61,7 @@ UNet-PyTorch/
 ├── train.py
 └── predict.py     
 ```
-Ensure that your directory structure abides by the structure mentioned above. For your reference, an empty `data` directory following this structure is placed in this project.
+Ensure that your directory structure abides by the structure mentioned above. Especially, make sure your data folder is structured in the format mentioned above. For your reference, an empty `data` directory following this structure is placed in this project.
 
 
 ### Prerequisites <a name = "prereq"></a>
@@ -100,7 +100,7 @@ Activate the conda environment:
 $ conda activate name_of_env
 ```
 
-To start training the model, you can call [train.py](train.py) directly. No command line arguments are necessary.  
+To start training the model, you can call [train.py](train.py) directly. No command line arguments are necessary as the parameters have already been set in [config.py](config/__init__.py) 
 
 ## TODO <a name="todo"></a>
 
