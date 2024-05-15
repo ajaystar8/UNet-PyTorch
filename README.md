@@ -29,6 +29,10 @@ The main code is located in the [train.py](train.py) file. All other code files 
 
 The code to perform segmentation on custom images is present in [predict.py](predict.py) file. 
 
+For your reference, the UNet architecture diagram (from [Ronneberger et al.](https://arxiv.org/abs/1505.04597)) is attached below.
+
+![UNet Architecture Diagram](assets/architecture.png)
+
 ### Dataset <a name="dataset"></a> 
 
 The images obtained from [MURA](https://stanfordmlgroup.github.io/competitions/mura/) had the X-Ray images included, without the ground truth segmentation masks. 
