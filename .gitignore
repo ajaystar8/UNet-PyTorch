@@ -13,6 +13,8 @@ code/datasets/mnist/train-labels-idx1-ubyte
 code/datasets/movie/aclImdb_v1.tar.gz
 
 #custom files and folder for this specific project
+config/private_keys.txt
+wandb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,6 +1,7 @@
 """
 Contains various utility functions for data visualization, PyTorch model training, testing and saving.
 """
+import os
 import random
 from glob import glob
 from typing import *
@@ -8,9 +9,14 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 from torch import nn
-from torchsummary import summary
 from torch.utils.data import DataLoader
 import torchvision.transforms.v2 as transforms
+
+try:
+    from torchsummary import summary
+except ImportError as e:
+    print("Failed to import torchsummary. Please install it using 'pip install torchsummary'.")
+    raise e
 
 from config import *
 from model_builder import UNet
@@ -102,17 +108,18 @@ def visualize_image_from_dataloader(dataloader: DataLoader):
     plt.show()
 
 
-def get_model_summary(model: nn.Module):
+def get_model_summary(model: nn.Module, input_size: Tuple[int, int, int]):
     """
     Prints the summary of the PyTorch model created.
 
     Args:
         model: A PyTorch model instance which is to be summarized.
+        input_size: Expected input dimensions of the image in tuple format (C, H, W)
 
     Returns:
         None.
     """
-    return summary(model=model.to(DEVICE), input_size=(IN_CHANNELS, IMG_HEIGHT, IMG_WIDTH))
+    return summary(model=model.to(DEVICE), input_size=input_size)
 
 
 def plot_loss_accuracy_curves(results: Dict[str, List[float]]):
@@ -212,14 +219,14 @@ def make_predictions(model: nn.Module,
 def save_model(
         model: nn.Module,
         target_dir: str,
-        model_name: str
+        model_ckpt_name: str
 ):
     """Saves a PyTorch model to a target directory.
 
       Args:
         model: A target PyTorch model to save.
         target_dir: A directory for saving the model to.
-        model_name: A filename for the saved model. Should include
+        model_ckpt_name: A filename for the saved model. Should include
           either ".pth" or ".pt" as the file extension.
 
       Example usage:
@@ -233,34 +240,34 @@ def save_model(
         os.makedirs(target_dir)
 
     # check if model name follows the guidelines for a checkpoint
-    assert model_name.split(".")[-1] == "pt" or model_name.split(".")[-1] == "pth", \
+    assert model_ckpt_name.split(".")[-1] == "pt" or model_ckpt_name.split(".")[-1] == "pth", \
         "model_name must end with .pt or .pth"
 
     # define complete model checkpoint path
-    model_ckpt_path = os.path.join(target_dir, model_name)
+    model_ckpt_path = os.path.join(target_dir, model_ckpt_name)
 
     # save model state dict
     print(f"[INFO] Saving model to: {model_ckpt_path}")
     torch.save(model.state_dict(), model_ckpt_path)
 
 
-def load_model(model_checkpoint_path: str):
+def load_model(model_ckpt_path: str, in_channels: int, out_channels: int):
     """
     The function takes in the path to a model checkpoint and returns a PyTorch model containing the trained weights.
 
     Args:
-        model_checkpoint_path: A path to the model checkpoint.
+        model_ckpt_path: A path to the model checkpoint.
 
     Returns:
         A trained PyTorch model instance.
     """
 
-    print(f"[INFO] Loading model checkpoint for prediction from: {model_checkpoint_path}")
+    print(f"[INFO] Loading model checkpoint for prediction from: {model_ckpt_path}")
 
     # Create model instance
-    baseline_0 = UNet(in_channels=IN_CHANNELS, out_channels=OUT_CHANNELS)
+    model = UNet(in_channels, out_channels)
 
     # Load model state dict
-    baseline_0.load_state_dict(torch.load(model_checkpoint_path))
+    model.load_state_dict(torch.load(model_ckpt_path))
 
-    return baseline_0
+    return model

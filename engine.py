@@ -1,6 +1,8 @@
 """
-Contains functions for training and testing a PyTorch model.
+Contains functions for training, validating and testing a PyTorch model.
 """
+import os
+import time
 from config import *
 from tqdm.auto import tqdm
 
@@ -9,17 +11,16 @@ import torch.nn as nn
 import torch.optim as optim
 
 from torch.utils.data import DataLoader
-from utils import save_model
+from utils.utils import save_model, load_model
+
+import wandb
 
 
 def train_step(model: nn.Module,
-               data_loader: DataLoader,
-               loss_function: nn.Module,
+               dataloader: DataLoader,
+               loss_fn: nn.Module,
                optimizer: optim.Optimizer,
-               accuracy_function,
-               f1_score_function,
-               jacquard_idx_function):
-
+               dice_fn, precision_fn, recall_fn):
     """
     Train a PyTorch model for a single epoch.
 
@@ -28,23 +29,25 @@ def train_step(model: nn.Module,
 
      Args:
         model: A pyTorch model to be trained.
-        data_loader: A DataLoader instance for the model to be trained on.
-        loss_function: A Pytorch loss function to minimize.
+        dataloader: A DataLoader instance for the model to be trained on.
+        loss_fn: A Pytorch loss function to minimize.
         optimizer: A Pytorch optimizer to help minimize the loss function.
-        accuracy_function: A torchmetrics instance to calculate accuracy.
-        f1_score_function: A torchmetrics instance to measure the F1-score.
-        jacquard_idx_function: A torchmetrics instance to measure the Jacquard Index.
+        dice_fn: A custom function to calculate the dice score.
+        precision_fn: A torchmetrics instance to measure precision.
+        recall_fn: A torchmetrics instance to measure recall.
 
     Returns:
-        A tuple of (train_loss, train_accuracy, train_F1_score, train_jacquard_idx)
+        A dictionary containing the validation metrics in the form of:
+        {"train_loss": train_loss, "train_dice": train_dice, "train_precision": train_precision,
+            "train_recall": train_recall}
     """
 
     # send model to device and put it in train mode
     model.to(DEVICE)
     model.train()
 
-    train_loss, train_accuracy, train_f1_score, train_jacquard_idx = 0, 0, 0, 0
-    for X, y in data_loader:
+    train_loss, train_dice, train_precision, train_recall = 0, 0, 0, 0
+    for X, y in dataloader:
         # send data to device
         X, y = X.to(DEVICE), y.to(DEVICE)
 
@@ -52,13 +55,13 @@ def train_step(model: nn.Module,
         y_logits = model(X)
 
         # 2. Calculate and accumulate loss
-        loss = loss_function(y_logits, y)
+        loss = loss_fn(y_logits, y)
         train_loss += loss
 
         # Calculate performance metrics
-        train_accuracy += accuracy_function(y_logits, torch.round(y))
-        train_f1_score += f1_score_function(y_logits, torch.round(y))
-        train_jacquard_idx += jacquard_idx_function(y_logits, torch.round(y))
+        train_dice += dice_fn(torch.round(torch.sigmoid(y_logits)).to(torch.float), torch.round(y).to(torch.float))
+        train_precision += precision_fn(y_logits, torch.round(y))
+        train_recall += recall_fn(y_logits, torch.round(y))
 
         # 3. Clear optimizer gradients
         optimizer.zero_grad()
@@ -70,50 +73,49 @@ def train_step(model: nn.Module,
         optimizer.step()
 
     # Adjust the metrics to get the average per batch
-    train_loss /= len(data_loader)
-    train_accuracy /= len(data_loader)
-    train_f1_score /= len(data_loader)
-    train_jacquard_idx /= len(data_loader)
+    train_loss /= len(dataloader)
+    train_dice /= len(dataloader)
+    train_precision /= len(dataloader)
+    train_recall /= len(dataloader)
 
-    print(f"Train Loss: {train_loss:.5f} | Train accuracy: {train_accuracy:.2f} | Train F1-score: {train_f1_score:.2f} "
-          f"| Train Jacquard Index: {train_jacquard_idx:.2f}\n")
+    print(f"\nTrain Loss: {train_loss:.5f} | Train DSC: {train_dice:.5f} | Train Precision: {train_precision:.5f} "
+          f"| Train Recall: {train_recall:.5f}")
+    return {"train_loss": train_loss, "train_dice": train_dice, "train_precision": train_precision,
+            "train_recall": train_recall}
 
-    return train_loss, train_accuracy, train_f1_score, train_jacquard_idx
 
-
-def test_step(model: nn.Module,
-              data_loader: DataLoader,
-              loss_function: nn.Module,
-              accuracy_function,
-              f1_score_function,
-              jacquard_idx_function):
+def val_step(model: nn.Module,
+             dataloader: DataLoader,
+             loss_fn: nn.Module,
+             dice_fn, precision_fn, recall_fn):
     """
-    Test a PyTorch model for a single epoch.
+    Validate a PyTorch model for a single epoch.
 
-    Turns a target PyTorch model to "eval" mode and then performs a forward pass on a testing dataset.
+    Turns a target PyTorch model to "eval" mode and then performs a forward pass on a validation dataset.
 
     Args:
-        model: A PyTorch model to be tested.
-        data_loader: A DataLoader instance for the model to be tested on.
-        loss_function: A PyTorch loss function to calculate loss on test data.
-        accuracy_function: A torchmetrics instance to calculate accuracy.
-        f1_score_function: A torchmetrics instance to measure the F1-score.
-        jacquard_idx_function: A torchmetrics instance to measure the Jacquard Index.
+        model: A PyTorch model to be validated.
+        dataloader: A DataLoader instance for the model to be validated on.
+        loss_fn: A PyTorch loss function to calculate loss on validated data.
+        dice_fn: A custom function to calculate the dice score.
+        precision_fn: A torchmetrics instance to measure precision.
+        recall_fn: A torchmetrics instance to measure recall.
 
     Returns:
-        A tuple of (test_loss, test_accuracy, test_f1_score, test_jacquard_idx)
+        A dictionary containing the validation metrics in the form of:
+        {"val_loss": val_loss, "val_dice": val_dice, "val_precision": val_precision, "val_recall": val_recall}
     """
 
     # send model to device
     model.to(DEVICE)
 
-    test_loss, test_accuracy, test_f1_score, test_jacquard_idx = 0, 0, 0, 0
+    val_loss, val_dice, val_precision, val_recall = 0, 0, 0, 0
 
     # set model to eval mode
     model.eval()
     with torch.inference_mode():
         # Loop through the DataLoader batches
-        for X, y in data_loader:
+        for X, y in dataloader:
             # send device to device
             X, y = X.to(DEVICE), y.to(DEVICE)
 
@@ -121,155 +123,161 @@ def test_step(model: nn.Module,
             y_logits = model(X)
 
             # 2. Calculate loss and performance metrics
-            test_loss += loss_function(y_logits, y)
-            test_accuracy += accuracy_function(y_logits, torch.round(y))
-            test_f1_score += f1_score_function(y_logits, torch.round(y))
-            test_jacquard_idx += jacquard_idx_function(y_logits, torch.round(y))
+            val_loss += loss_fn(y_logits, torch.round(y))
+            val_dice += dice_fn(torch.round(torch.sigmoid(y_logits)).to(torch.int), torch.round(y).to(torch.int))
+            val_precision += precision_fn(y_logits, torch.round(y))
+            val_recall += recall_fn(y_logits, torch.round(y))
 
         # Adjust metrics by calculating average
-        test_loss /= len(data_loader)
-        test_accuracy /= len(data_loader)
-        test_f1_score /= len(data_loader)
-        test_jacquard_idx /= len(data_loader)
+        val_loss /= len(dataloader)
+        val_dice /= len(dataloader)
+        val_precision /= len(dataloader)
+        val_recall /= len(dataloader)
 
-        print(f"Test Loss: {test_loss:.5f} | Test accuracy: {test_accuracy:.2f} | Test F1-score: {test_f1_score:.2f} "
-              f"| Test Jacquard Index: {test_jacquard_idx:.2f}\n")
-
-        return test_loss, test_accuracy, test_f1_score, test_jacquard_idx
+        print(f"\nVal Loss: {val_loss:.5f} | Val DSC: {val_dice:.5f}| "
+              f"Val Precision: {val_precision:.5f} | Val Recall: {val_recall:.5f}\n")
+        return {"val_loss": val_loss, "val_dice": val_dice, "val_precision": val_precision, "val_recall": val_recall}
 
 
 def train(model: nn.Module,
+          epochs: int,
           train_dataloader: DataLoader,
-          test_dataloader: DataLoader,
+          val_dataloader: DataLoader,
+          loss_fn: nn.Module,
           optimizer: optim.Optimizer,
-          loss_function: nn.Module,
-          accuracy_function,
-          f1_score_function,
-          jaccard_idx_function,
-          epochs: int = 5):
+          dice_fn, precision_fn, recall_fn, model_ckpt_name: str, checkpoint_dir: str, verbose: int):
     """
-    Trains and tests a PyTorch model.
+    Trains and validates a PyTorch model.
 
-    Passes a target PyTorch model, through train_step() and test_step() functions for a specified number of epochs,
-    training and testing the model in the same epoch loop. If the testing F1-score of the model improves, the function
-    save the model's state_dict as a .pth file.
+    Passes a target PyTorch model, through train_step() and val_step() functions for a specified number of epochs,
+    training and validating the model in the same epoch loop. If the validation Dice-score of the model improves,
+    the function save the model's state_dict as a .pth file.
 
     Args:
-        model: A PyTorch model to be trained and tested.
+        model: A PyTorch model to be trained and validated.
         train_dataloader: A DataLoader instance for training data.
-        test_dataloader: A DataLoader instance for testing data.
+        val_dataloader: A DataLoader instance for validation data.
         optimizer: A PyTorch optimizer.
-        loss_function: A PyTorch loss function.
-        accuracy_function: A torchmetrics instance to compute accuracy.
-        f1_score_function: A torchmetrics instance to compute F1 score.
-        jaccard_idx_function: A torchmetrics instance to compute jaccard index.
-        epochs: Number of epochs
+        loss_fn: A PyTorch loss function.
+        dice_fn: A custom function to calculate the dice score.
+        precision_fn: A torchmetrics instance to measure precision.
+        recall_fn: A torchmetrics instance to measure recall.
+        checkpoint_dir: path to directory where the model checkpoints are stored
 
     Returns:
-          A dictionary of training and testing loss and accuracy values. Each metric has a value in a list for
-          each epoch in the form of:
-          {train_loss: [...],
-            train_accuracy: [...],
-            test_loss: [...],
-            test_accuracy: [...]}
+        A tuple of containing train and validation metrics (in form of dict) in form of:
+            (train_metrics, val_metrics)
     """
+
+    print("[INFO] Training started...")
 
     # create empty results dictionary
-    results = {
-        "train_loss": [],
-        "train_accuracy": [],
-        "test_loss": [],
-        "test_accuracy": []
+    train_metrics = {
+        "train_loss": [], "train_dice": [], "train_precision": [], "train_recall": [],
     }
 
-    # Track the best obtained F1-score
-    max_f1 = 0.0000
-    # Loop through training and testing steps for a number of epochs
+    val_metrics = {
+        "val_loss": [], "val_dice": [], "val_precision": [], "val_recall": []
+    }
+
+    # Track the best obtained Dice Score
+    # Loop through training and validation steps for a number of epochs
+    max_validation_dice, max_train_time, max_val_time = 0.0000, 0, 0
     for epoch in tqdm(range(epochs)):
-        print(f"\nEpoch: {epoch + 1}----------------------\n")
 
-        train_loss, train_accuracy, train_f1, train_jacquard = train_step(model,
-                                                                          train_dataloader,
-                                                                          loss_function,
-                                                                          optimizer,
-                                                                          accuracy_function,
-                                                                          f1_score_function,
-                                                                          jaccard_idx_function)
+        print(f"\nEPOCH-{epoch + 1}------------------------------------------------------\n")
 
-        test_loss, test_accuracy, test_f1, test_jacquard = test_step(model,
-                                                                     test_dataloader,
-                                                                     loss_function,
-                                                                     accuracy_function,
-                                                                     f1_score_function,
-                                                                     jaccard_idx_function)
+        train_start_time = time.time()
+        train_epoch_metrics = train_step(model, train_dataloader, loss_fn, optimizer, dice_fn, precision_fn, recall_fn)
+        train_end_time = time.time()
+        total_train_time = round(train_end_time - train_start_time)
 
-        # Save model state_dict if testing performance improves
-        if test_f1 > max_f1:
-            print(f"Validation performance of model improved from {max_f1:.4f} to {test_f1:.5f}\n")
-            save_model(model=model,
-                       target_dir=CHECKPOINT_DIR,
-                       model_name=f"{model.__class__.__name__}.pth")
-            max_f1 = test_f1
+        val_start_time = time.time()
+        val_epoch_metrics = val_step(model, val_dataloader, loss_fn, dice_fn, precision_fn, recall_fn)
+        val_end_time = time.time()
+        total_val_time = round(val_end_time - val_start_time)
 
-        results["train_loss"].append(train_loss.cpu().detach().numpy())
-        results["train_accuracy"].append(train_accuracy.cpu().detach().numpy())
-        results["test_loss"].append(test_loss.cpu().detach().numpy())
-        results["test_accuracy"].append(test_accuracy.cpu().detach().numpy())
+        max_train_time = max(max_train_time, total_train_time)
+        max_val_time = max(max_val_time, total_val_time)
 
-    return results
+        print(f"\n[INFO] Train time: {total_train_time}s\n"
+              f"[INFO] Inference time: {total_val_time}s\n")
+
+        val_dice = val_epoch_metrics["val_dice"]
+        if val_dice > max_validation_dice:
+            print(f"\nModel performance improved from Dice Score of {max_validation_dice:.5f} to "
+                  f"Dice Score of {val_dice:.5f}\n")
+            print("[INFO] Saving model checkpoint...")
+            save_model(model=model, target_dir=checkpoint_dir, model_ckpt_name=model_ckpt_name)
+            max_validation_dice = val_dice
+
+        metrics = ["loss", "dice", "precision", "recall"]
+        for i, metric in enumerate(metrics):
+            train_metrics[f"train_{metric}"].append(train_epoch_metrics[f"train_{metric}"].cpu().detach().numpy())
+            val_metrics[f"val_{metric}"].append(val_epoch_metrics[f"val_{metric}"].cpu().detach().numpy())
+
+        wandb.log({**train_epoch_metrics, **val_epoch_metrics})
+
+        if verbose == 1:
+            wandb.alert(
+                title=f"Epoch-{epoch + 1} completed!",
+                text=f"Val-Dice-Score: {val_epoch_metrics['val_dice']:.3f} \n",
+                level=wandb.AlertLevel.INFO,
+            )
+
+    wandb.log({"train_time": max_train_time, "val_time": max_val_time})
+    wandb.finish()
+    return train_metrics, val_metrics
 
 
-def eval_model(model: nn.Module,
-               data_loader: DataLoader,
-               loss_function: nn.Module,
-               accuracy_function,
-               f1_score_function,
-               jaccard_idx_function):
+def test_model(model_ckpt_name: str,
+               dataloader: DataLoader,
+               loss_fn: nn.Module,
+               dice_fn, precision_fn, recall_fn, checkpoint_dir: str,
+               in_channels: int, out_channels: int):
     """
     Stores and returns the performance metrics when the model is tested on the testing dataset. Has similar
-    functionality to the test_step function above.
+    functionality to the val_step function above.
 
     Args:
-        model: A PyTorch model to be trained and tested.
-        data_loader: A DataLoader instance.
-        loss_function: A PyTorch loss function.
-        accuracy_function: A torchmetrics instance to compute accuracy.
-        f1_score_function: A torchmetrics instance to compute F1 score.
-        jaccard_idx_function: A torchmetrics instance to compute jaccard index.
+        model_ckpt_name: name of the PDR-UNet checkpoint to be loaded and tested.
+        dataloader: A DataLoader instance.
+        loss_fn: A PyTorch loss function.
+        dice_fn: A custom function to calculate the dice score.
+        precision_fn: A torchmetrics instance to measure precision.
+        recall_fn: A torchmetrics instance to measure recall.
+        checkpoint_dir: path to directory where the model checkpoints are stored
+        in_channels: number of channels in the input image (default 1)
+        out_channels: number of classes in ground truth mask (default 1)
+
 
     Returns:
-          A dictionary of testing loss, accuracy, F1 score and Jaccard Index values in the form of:
-          {"model_name": str,
-            "model_loss": float,
-            "model_accuracy": float,
-            "model_F1_score": float,
-            "model_Jaccard_Index": float}
+        The test result metrics of the model under consideration in the form of:
+            {"test_loss": test_loss, "test_dice": test_dice, "test_precision": test_precision,
+               "test_recall": test_recall}
     """
+    model = load_model(os.path.join(checkpoint_dir, model_ckpt_name), in_channels, out_channels)
     model.to(DEVICE)
 
-    test_loss, test_accuracy, test_f1_score, test_jaccard_idx = 0, 0, 0, 0
+    test_loss, test_dice, test_precision, test_recall = 0, 0, 0, 0
 
     model.eval()
     with torch.inference_mode():
-        for X, y in data_loader:
+        for X, y in dataloader:
             X, y = X.to(DEVICE), y.to(DEVICE)
 
             y_logits = model(X)
 
-            test_loss += loss_function(y_logits, y)
-            test_accuracy += accuracy_function(y_logits, torch.round(y))
-            test_f1_score += f1_score_function(y_logits, torch.round(y))
-            test_jaccard_idx += jaccard_idx_function(y_logits, torch.round(y))
+            test_loss += loss_fn(y_logits, torch.round(y))
+            test_dice += dice_fn(torch.round(torch.sigmoid(y_logits)).to(torch.int), torch.round(y).to(torch.int))
+            test_precision += precision_fn(y_logits, torch.round(y))
+            test_recall += recall_fn(y_logits, torch.round(y))
 
-        test_loss /= len(data_loader)
-        test_accuracy /= len(data_loader)
-        test_f1_score /= len(data_loader)
-        test_jaccard_idx /= len(data_loader)
+        test_loss /= len(dataloader)
+        test_dice /= len(dataloader)
+        test_precision /= len(dataloader)
+        test_recall /= len(dataloader)
 
-    return {
-        "model_name": model.__class__.__name__,
-        "model_loss": test_loss.item(),
-        "model_accuracy": (test_accuracy.item()) * 100,
-        "model_F1_score": test_f1_score.item(),
-        "model_Jaccard_Index": test_jaccard_idx.item()
-    }
+    test_results = {"test_loss": test_loss, "test_dice": test_dice, "test_precision": test_precision,
+                    "test_recall": test_recall}
+    return test_results
