@@ -1,7 +1,7 @@
 # UNet Paper Implementation using PyTorch
 
-[![GitHub license](https://img.shields.io/badge/license-Apache-blue.svg)](
-https://github.com/drkostas/COSC525-Project1/blob/master/LICENSE)
+[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](
+https://github.com/ajaystar8/UNet-PyTorch/blob/main/LICENSE)
 
 
 ## Table of Contents
