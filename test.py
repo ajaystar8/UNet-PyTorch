@@ -1,5 +1,6 @@
 import os
 import argparse
+from datetime import datetime
 
 import torch.nn as nn
 import torchvision.transforms.v2 as transforms
@@ -44,6 +45,7 @@ simple_transforms = transforms.Compose([
     transforms.ToTensor(),
 ])
 
+# validation metrics functions
 loss_fn = nn.BCEWithLogitsLoss()
 dice_fn = dice_coefficient
 precision_fn = BinaryPrecision().to(config.DEVICE)
@@ -59,6 +61,7 @@ train_dataloader, val_dataloader, test_dataloader = create_dataloaders(
 )
 
 # Perform testing on the trained model
+print(f"[INFO] Model testing started...")
 model_test_results = test_model(
     model_ckpt_name=args.model_ckpt_name,
     dataloader=test_dataloader,
@@ -67,6 +70,26 @@ model_test_results = test_model(
     in_channels=args.in_channels, out_channels=args.out_channels
 )
 
-with open(f"{args.result_file_name}.txt", "w") as f:
-    f.write(f"\nProject-Name:{args.project_name}\n")
-    f.write(model_test_results)
+# path where the test results will be stored
+test_results_dir = os.path.join(os.getcwd(), "test_results")
+os.makedirs(test_results_dir, exist_ok=True)
+
+test_results_path = os.path.join(test_results_dir, f"{args.result_file_name}.txt")
+if os.path.exists(test_results_path):
+    raise FileExistsError(f"{test_results_path} already exists. Rename your file or delete the existing one.")
+
+print(f"[INFO] Saving model test results...")
+# store test results in .txt file
+with open(test_results_path, "w") as f:
+    # timestamp
+    now = datetime.now()
+    formatted_now = now.strftime("%Y-%m-%d %H:%M")
+    # project name
+    f.write(f"{formatted_now}\nProject-Name: {args.project_name}\n")
+    # paste results
+    result_str = ""
+    for key, value in model_test_results.items():
+        result_str += f"{key}: {value.item():.4f}\n"
+    f.write(str(result_str))
+
+print(f"[INFO] Model test results saved to {test_results_path}")
