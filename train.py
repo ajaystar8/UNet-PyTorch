@@ -151,11 +151,4 @@ baseline_0_train_results = train(
     model_ckpt_name=MODEL_CKPT_NAME, checkpoint_dir=args.checkpoint_dir, verbose=args.verbose
 )
 
-# Perform testing on the trained model
-baseline_0_results = test_model(
-    model_ckpt_name=MODEL_CKPT_NAME,
-    dataloader=test_dataloader,
-    loss_fn=loss_fn,
-    dice_fn=dice_fn, precision_fn=precision_fn, recall_fn=recall_fn, checkpoint_dir=args.checkpoint_dir,
-    in_channels=args.in_channels, out_channels=args.out_channels
-)
+
