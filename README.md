@@ -109,8 +109,9 @@ To start training the model, you can call the [train.py](train.py) script. Effor
 ```ShellSession
 $ python3 train.py --help
 
-usage: train.py [-h] [-v VERBOSITY] [--input_dims H W] [--epochs NUM_EPOCHS] [--batch_size N] [--learning_rate LR] [--in_channels IN_C] [--out_channels OUT_C]
-                DATA_DIR CHECKPOINT_DIR RUN_NAME DATASET_NAME WANDB_API_KEY
+usage: train.py [-h] [--wandb_api_key WANDB_API_KEY] [-v VERBOSITY] [--input_dims H W] [--epochs NUM_EPOCHS] [--batch_size N] [--loss_fn LOSS_FUNCTION] [--learning_rate LR]
+                [--exp_track TRACK_EXPERIMENT] [--in_channels IN_C] [--out_channels OUT_C]
+                DATA_DIR CHECKPOINT_DIR RUN_NAME DATASET_NAME
 
 Script to begin training and validation of UNet.
 
@@ -119,10 +120,11 @@ positional arguments:
   CHECKPOINT_DIR        path to directory storing model checkpoints
   RUN_NAME              Name of current run
   DATASET_NAME          Name of dataset over which model is to be trained
-  WANDB_API_KEY         API key of your Weights and Biases Account.
 
 optional arguments:
   -h, --help            show this help message and exit
+  --wandb_api_key WANDB_API_KEY
+                        API key of your Weights and Biases Account.
   -v VERBOSITY, --verbose VERBOSITY
                         setting verbosity to 1 will send email alerts to user after every epoch (default: 0)
 
@@ -130,7 +132,11 @@ Hyperparameters for model training:
   --input_dims H W      spatial dimensions of input image (default: [256, 256])
   --epochs NUM_EPOCHS   number of epochs to train (default: 10)
   --batch_size N        number of images per batch (default: 1)
+  --loss_fn LOSS_FUNCTION
+                        Loss function for model training (default: BCELoss)
   --learning_rate LR    learning rate for training (default: 0.0001)
+  --exp_track TRACK_EXPERIMENT
+                        'true' if you want to track experiments using wandb. Defaults to 'false'
 
 Architecture parameters:
   --in_channels IN_C    number of channels in input image (default: 1)
@@ -141,7 +147,7 @@ Happy training! :)
 
 The command shown below is an example of a call that can be used to train the model.
 ```ShellSession
-$ python3 train.py --verbose 0 --input_dims 256 256 --epochs 30 --batch_size 2 --loss_fn BCEWithLogitsLoss --learning_rate 1e-5 --exp_track false --in_channels 1 --out_channels 1 ./data ./models sample_run MURA WANDB_KEY 
+$ python3 train.py --verbose 0 --input_dims 256 256 --epochs 30 --batch_size 2 --loss_fn BCEWithLogitsLoss --learning_rate 1e-5 --exp_track false --in_channels 1 --out_channels 1 ./data ./models sample_run MURA 
 ```
 
 ## TODO <a name="todo"></a>
