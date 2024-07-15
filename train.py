@@ -48,7 +48,7 @@ hyperparameters_group.add_argument('--batch_size', type=int, metavar='N',
                                    help='number of images per batch (default: %(default)s)', default=1)
 hyperparameters_group.add_argument("--loss_fn", type=str, metavar='LOSS_FUNCTION',
                                    help="Loss function for model training (default: %(default)s)",
-                                   default="BCELoss")
+                                   default="BCEWithLogitsLoss")
 hyperparameters_group.add_argument('--learning_rate', type=float, metavar='LR',
                                    help='learning rate for training (default: %(default)s)', default=1e-4)
 hyperparameters_group.add_argument("--exp_track", type=str, metavar='TRACK_EXPERIMENT',
